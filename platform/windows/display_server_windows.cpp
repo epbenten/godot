@@ -154,10 +154,10 @@ String DisplayServerWindows::get_name() const {
 void DisplayServerWindows::_set_mouse_mode_impl(MouseMode p_mode) {
 	if (p_mode == MOUSE_MODE_HIDDEN || p_mode == MOUSE_MODE_CAPTURED || p_mode == MOUSE_MODE_CONFINED_HIDDEN) {
 		// Hide cursor before moving.
-		if (hCursor == nullptr) {
-			hCursor = SetCursor(nullptr);
+		if (hCursor == blankCursor) {
+			hCursor = SetCursor(blankCursor);
 		} else {
-			SetCursor(nullptr);
+			SetCursor(blankCursor);
 		}
 	}
 
@@ -5844,17 +5844,17 @@ LRESULT DisplayServerWindows::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARA
 			if (LOWORD(lParam) == HTCLIENT) {
 				if (windows[window_id].window_focused && (mouse_mode == MOUSE_MODE_HIDDEN || mouse_mode == MOUSE_MODE_CAPTURED || mouse_mode == MOUSE_MODE_CONFINED_HIDDEN)) {
 					// Hide the cursor.
-					if (hCursor == nullptr) {
-						hCursor = SetCursor(nullptr);
+					if (hCursor == blankCursor) {
+						hCursor = SetCursor(blankCursor);
 					} else {
-						SetCursor(nullptr);
+						SetCursor(blankCursor);
 					}
 				} else {
-					if (hCursor != nullptr) {
+					if (hCursor != blankCursor) {
 						CursorShape c = cursor_shape;
 						cursor_shape = CURSOR_MAX;
 						cursor_set_shape(c);
-						hCursor = nullptr;
+						hCursor = blankCursor;
 					}
 				}
 			}
@@ -7070,6 +7070,22 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Win
 
 	cursor_shape = CURSOR_ARROW;
 
+	//Hack: Can't use MOUSE_MODE_CAPTURED on remote desktop (remote input issue) #95501
+    //   Only needs to be done once per window then can be reused within that window.
+    // We get the cursor size for the eventuality that the user has changed it in the system settings.
+    int cursorWidth = GetSystemMetrics(SM_CXCURSOR);
+    int cursorHeight = GetSystemMetrics(SM_CYCURSOR);
+    // We create two ByteMaps the same size as the default cursor
+    //    Then set the AndMask to all ones, witch makes the cursor fully transparency.
+    unsigned char* andMask = (unsigned char*) calloc(cursorWidth * cursorHeight / 8, sizeof(unsigned char));
+    memset(andMask, 0xFF, cursorWidth * cursorHeight / 8);
+    unsigned char* xorMask = (unsigned char*) calloc(cursorWidth * cursorHeight / 8, sizeof(unsigned char));
+    // If cursor creation fails we get a null, which can still be used by SetCursor for the purposes of an invisible cursor.
+    blankCursor = CreateCursor(NULL, 0, 0, cursorWidth, cursorHeight, andMask, xorMask);
+    // We can then free the ByteMaps we made
+    free(andMask);
+    free(xorMask);
+
 	_update_real_mouse_position(MAIN_WINDOW_ID);
 
 	r_error = OK;
@@ -7161,6 +7177,7 @@ DisplayServerWindows::~DisplayServerWindows() {
 	touch_state.clear();
 
 	cursors_cache.clear();
+	DestroyCursor(blankCursor);
 
 	// Destroy all status indicators.
 	for (HashMap<IndicatorID, IndicatorData>::Iterator E = indicators.begin(); E; ++E) {

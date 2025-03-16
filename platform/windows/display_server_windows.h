@@ -637,6 +637,7 @@ class DisplayServerWindows : public DisplayServer {
 	HCURSOR cursors[CURSOR_MAX] = { nullptr };
 	CursorShape cursor_shape = CursorShape::CURSOR_ARROW;
 	RBMap<CursorShape, Vector<Variant>> cursors_cache;
+	HCURSOR blankCursor;
 
 	Callable system_theme_changed;
 
